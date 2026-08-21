@@ -10,8 +10,8 @@ const _instructions = '''
 Marionette MCP enables AI agents to interact with Flutter apps running in debug mode. It provides tools to inspect UI elements, tap buttons, enter text, scroll, take screenshots, retrieve logs, and perform hot reloads and hot restarts.
 
 Usage:
-1. Start the Flutter app in debug mode and note the VM service URI (e.g., ws://127.0.0.1:8181/ws).
-2. Use the "connect" tool with the VM service URI to establish a connection.
+1. When automatic VM service discovery is configured, start the Flutter app with `--vmservice-out-file` pointing to the configured file. Marionette connects and reconnects automatically.
+2. Otherwise, use the "connect" tool with the Flutter VM service URI as a fallback.
 3. Use "get_interactive_elements" to discover available UI elements.
 4. Interact with elements using "tap", "enter_text", or "scroll_to" tools.
 5. Use "take_screenshots" to see the current app state and "get_logs" to debug issues.
@@ -24,11 +24,11 @@ Important: Elements are matched by their key (ValueKey<String>), Semantics ident
 /// Runs the Marionette MCP server with the given configuration.
 ///
 /// Sets up logging, creates the MCP server with tools, and runs it on either
-/// stdio or SSE transport depending on whether [ssePort] is provided.
+/// stdio or Streamable HTTP transport depending on whether [httpPort] is provided.
 Future<int> runMcpServer({
   required String logLevel,
   String? logFile,
-  int? ssePort,
+  int? httpPort,
   String? vmServiceFile,
 }) async {
   setupLogging(logLevel, logFile);
@@ -57,8 +57,8 @@ Future<int> runMcpServer({
   }
 
   try {
-    if (ssePort != null) {
-      return await _runSseServer(server, ssePort);
+    if (httpPort != null) {
+      return await _runHttpServer(server, httpPort);
     } else {
       return await _runStdioServer(server);
     }
@@ -125,19 +125,33 @@ void setupLogging(String logLevelName, String? logFile) {
 
   logging.Logger.root.level = logLevel;
 
+  String formatRecord(logging.LogRecord record) {
+    final buffer = StringBuffer(
+      '[${record.level.name}][${record.loggerName}]'
+      '[${_formatTime(record.time)}] ${record.message}',
+    );
+
+    if (record.error != null) {
+      buffer.write('\n${record.error}');
+    }
+    if (record.stackTrace != null) {
+      buffer.write('\n${record.stackTrace}');
+    }
+
+    return buffer.toString();
+  }
+
   if (logFile != null) {
     final file = File(logFile)..createSync(recursive: true);
     logging.Logger.root.onRecord.listen((record) {
       file.writeAsStringSync(
-        '[${record.level.name}][${record.loggerName}][${_formatTime(record.time)}] ${record.message}\n',
+        '${formatRecord(record)}\n',
         mode: FileMode.append,
       );
     });
   } else {
     logging.Logger.root.onRecord.listen((record) {
-      stderr.writeln(
-        '[${record.level.name}][${record.loggerName}][${_formatTime(record.time)}] ${record.message}',
-      );
+      stderr.writeln(formatRecord(record));
     });
   }
 }
@@ -199,31 +213,66 @@ Future<int> _runStdioServer(McpServer server) async {
   return 0;
 }
 
-Future<int> _runSseServer(McpServer server, int ssePort) async {
+Future<int> _runHttpServer(McpServer server, int httpPort) async {
   final logger = logging.Logger('main');
-  final sseServerManager = SseServerManager(server);
+  final transport = StreamableHTTPServerTransport(
+    options: StreamableHTTPServerTransportOptions(
+      sessionIdGenerator: () => null,
+      enableJsonResponse: true,
+      enableDnsRebindingProtection: true,
+      allowedHosts: {'127.0.0.1', 'localhost'},
+    ),
+  );
+  final exitSignal = ExitSignal();
+
   try {
+    await server.connect(transport);
+
     final httpServer = await HttpServer.bind(
       InternetAddress.loopbackIPv4,
-      ssePort,
+      httpPort,
     );
-    logger.fine('Running MCP server on SSE port $ssePort');
+
+    logger.info(
+      'MCP Streamable HTTP server listening on '
+      'http://127.0.0.1:$httpPort/mcp',
+    );
+
     unawaited(
-      ExitSignal().wait.then((signal) {
+      exitSignal.wait.then((signal) {
         logger.info('Received ${signal.name}, stopping');
         unawaited(httpServer.close());
       }),
     );
 
     await for (final request in httpServer) {
-      unawaited(sseServerManager.handleRequest(request));
+      if (request.uri.path == '/healthz') {
+        request.response
+          ..statusCode = HttpStatus.ok
+          ..write('ok\n');
+        await request.response.close();
+        continue;
+      }
+
+      if (request.uri.path != '/mcp') {
+        request.response
+          ..statusCode = HttpStatus.notFound
+          ..write('Not Found');
+        await request.response.close();
+        continue;
+      }
+
+      unawaited(transport.handleRequest(request));
     }
 
     logger.info('Stopping');
     await server.close();
+    await transport.close();
   } catch (e, st) {
-    logger.severe('Error when waiting for MCP client connection', e, st);
+    logger.severe('Error when running Streamable HTTP server', e, st);
     return 1;
+  } finally {
+    exitSignal.dispose();
   }
 
   logger.info('Stopped');

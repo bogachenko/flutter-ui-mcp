@@ -15,7 +15,7 @@ void registerInspectionTools(
     ..registerTool(
       'get_interactive_elements',
       description:
-          'Returns a list of all interactive elements currently visible in the Flutter app UI tree. Each element includes its type, text content (if any), key (if any), and other identifying properties. This is useful for understanding what can be interacted with in the app. Requires an active connection established via connect.',
+          'Returns a list of all interactive elements currently visible in the Flutter app UI tree. Each element includes its type, text content (if any), key (if any), and other identifying properties. This is useful for understanding what can be interacted with in the app. Requires an active Flutter app connection. Automatic VM service discovery can establish it; use connect only as a fallback.',
       annotations: const ToolAnnotations(
         title: 'Get Interactive Elements',
         readOnlyHint: true,
@@ -44,7 +44,7 @@ void registerInspectionTools(
     ..registerTool(
       'get_logs',
       description:
-          'Retrieves all application logs collected from the Flutter app since app start or since the last hot reload. This includes debug messages, errors, and other log output from the running app. Requires an active connection established via connect.',
+          'Retrieves all application logs collected from the Flutter app since app start or since the last hot reload. This includes debug messages, errors, and other log output from the running app. Requires an active Flutter app connection. Automatic VM service discovery can establish it; use connect only as a fallback.',
       annotations: const ToolAnnotations(
         title: 'Get Application Logs',
         readOnlyHint: true,
@@ -96,7 +96,7 @@ void registerInspectionTools(
     ..registerTool(
       'take_screenshots',
       description:
-          'Takes screenshots of all views in the Flutter app. Returns base64-encoded PNG images that can be decoded and saved. This captures the current visual state of the app. Requires an active connection established via connect.',
+          'Takes screenshots of all views in the Flutter app. Returns base64-encoded PNG images that can be decoded and saved. This captures the current visual state of the app. Requires an active Flutter app connection. Automatic VM service discovery can establish it; use connect only as a fallback.',
       annotations: const ToolAnnotations(
         title: 'Take Screenshots',
         readOnlyHint: true,

@@ -23,7 +23,7 @@ void registerExtensionTools(
           'extension includes its name and an optional description. Use this '
           'to discover what app-specific extensions are available before '
           'calling them with call_custom_extension. '
-          'Requires an active connection established via connect.',
+          'Requires an active Flutter app connection. Automatic VM service discovery can establish it; use connect only as a fallback.',
       annotations: const ToolAnnotations(
         title: 'List Custom Extensions',
         readOnlyHint: true,
@@ -80,7 +80,7 @@ void registerExtensionTools(
           'Arguments are passed as string key-value pairs. '
           'The available extensions depend on what the connected Flutter app '
           'has registered. Check the app\'s source code for available extensions. '
-          'Requires an active connection established via connect.',
+          'Requires an active Flutter app connection. Automatic VM service discovery can establish it; use connect only as a fallback.',
       annotations: const ToolAnnotations(title: 'Call Custom Extension'),
       inputSchema: ToolInputSchema(
         properties: {

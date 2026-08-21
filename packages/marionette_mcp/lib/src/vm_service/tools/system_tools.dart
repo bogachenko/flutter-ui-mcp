@@ -13,7 +13,7 @@ void registerSystemTools(
     ..registerTool(
       'hot_reload',
       description:
-          'Performs a hot reload of the Flutter app. This reloads the Dart code without restarting the app, preserving the current state. Useful after making code changes to see them reflected in the running app. Requires an active connection established via connect.',
+          'Performs a hot reload of the Flutter app. This reloads the Dart code without restarting the app, preserving the current state. Useful after making code changes to see them reflected in the running app. Requires an active Flutter app connection. Automatic VM service discovery can establish it; use connect only as a fallback.',
       annotations: const ToolAnnotations(title: 'Hot Reload'),
       inputSchema: const ToolInputSchema(properties: {}),
       callback: (args, extra) async {
@@ -48,7 +48,7 @@ void registerSystemTools(
     ..registerTool(
       'hot_restart',
       description:
-          'Performs a hot restart of the Flutter app. This fully restarts the app from main() and resets all state. Use it instead of hot_reload after changes a reload cannot pick up (e.g. changes to main()/bootstrap, global singletons, or state shape). Requires the app to be running via `flutter run` and an active connection established via connect.',
+          'Performs a hot restart of the Flutter app. This fully restarts the app from main() and resets all state. Use it instead of hot_reload after changes a reload cannot pick up (e.g. changes to main()/bootstrap, global singletons, or state shape). Requires the app to be running via `flutter run` and an active Flutter app connection. Automatic VM service discovery can establish it; use connect only as a fallback.',
       annotations: const ToolAnnotations(title: 'Hot Restart'),
       inputSchema: const ToolInputSchema(properties: {}),
       callback: (args, extra) async {

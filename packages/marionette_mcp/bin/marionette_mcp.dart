@@ -24,8 +24,9 @@ ArgParser buildParser() {
       help: 'Path to log file. If not set, logs to stderr.',
     )
     ..addOption(
-      'sse-port',
-      help: 'Port for SSE server. If not set, uses stdio transport.',
+      'http-port',
+      help:
+          'Port for Streamable HTTP server. If not set, uses stdio transport.',
     )
     ..addOption(
       'vmservice-file',
@@ -60,14 +61,14 @@ Future<int> main(List<String> arguments) async {
 
     final logLevel = (results.option('log-level') ?? 'INFO').toUpperCase();
     final logFile = results.option('log-file');
-    final ssePortStr = results.option('sse-port');
-    final ssePort = ssePortStr != null ? int.tryParse(ssePortStr) : null;
+    final httpPortStr = results.option('http-port');
+    final httpPort = httpPortStr != null ? int.tryParse(httpPortStr) : null;
     final vmServiceFile = results.option('vmservice-file');
 
     return await runMcpServer(
       logLevel: logLevel,
       logFile: logFile,
-      ssePort: ssePort,
+      httpPort: httpPort,
       vmServiceFile: vmServiceFile,
     );
   } on FormatException catch (e) {

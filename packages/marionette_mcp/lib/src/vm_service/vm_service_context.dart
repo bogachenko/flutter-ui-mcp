@@ -74,7 +74,7 @@ final class VmServiceContext {
       ..registerTool(
         'connect',
         description:
-            'Connects to a Flutter app via its VM service URI. This must be called before using any other tools. The VM service URI is typically in the format ws://127.0.0.1:PORT/ws and can be found in the Flutter app output when running in debug mode.',
+            'Manually connects to a Flutter app via its VM service URI. Use this as a fallback when automatic VM service discovery is not configured or available.',
         annotations: const ToolAnnotations(title: 'Connect to App'),
         inputSchema: ToolInputSchema(
           properties: {
@@ -109,7 +109,7 @@ final class VmServiceContext {
       ..registerTool(
         'disconnect',
         description:
-            'Disconnects from the currently connected Flutter app. After disconnecting, you must call connect again to use any other tools.',
+            'Disconnects from the currently connected Flutter app. Automatic discovery may reconnect when a new VM service URI is published.',
         annotations: const ToolAnnotations(title: 'Disconnect from App'),
         inputSchema: const ToolInputSchema(properties: {}),
         callback: (args, extra) async {

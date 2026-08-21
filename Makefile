@@ -5,5 +5,5 @@ VM_SERVICE_FILE ?= $(HOME)/.cache/flutter-ui-mcp/vmservice.url
 
 mcp-run:
 	dart run marionette_mcp:marionette_mcp \
-	  --sse-port $(MCP_PORT) \
+	  --http-port $(MCP_PORT) \
 	  --vmservice-file "$(VM_SERVICE_FILE)"

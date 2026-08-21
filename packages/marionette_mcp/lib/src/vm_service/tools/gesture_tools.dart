@@ -15,7 +15,7 @@ void registerGestureTools(
     ..registerTool(
       'tap',
       description:
-          'Simulates a tap gesture on an element in the Flutter app that matches the given criteria. You can match elements by their key (a ValueKey<String>), by their Semantics identifier, by their text content (but not accessibility label!), by their widget type, or by screen coordinates. Only one matching method should be used: either key, identifier, text, type, or coordinates. Prefer using the key if available, as it is more reliable; the Semantics identifier is the next-best stable selector. Limit yourself to elements from get_interactive_elements only if you can. Tapping a text field gives it focus, after which you can use enter_text with focused_element to type into it. Requires an active connection established via connect.',
+          'Simulates a tap gesture on an element in the Flutter app that matches the given criteria. You can match elements by their key (a ValueKey<String>), by their Semantics identifier, by their text content (but not accessibility label!), by their widget type, or by screen coordinates. Only one matching method should be used: either key, identifier, text, type, or coordinates. Prefer using the key if available, as it is more reliable; the Semantics identifier is the next-best stable selector. Limit yourself to elements from get_interactive_elements only if you can. Tapping a text field gives it focus, after which you can use enter_text with focused_element to type into it. Requires an active Flutter app connection. Automatic VM service discovery can establish it; use connect only as a fallback.',
       annotations: const ToolAnnotations(title: 'Tap Element'),
       inputSchema: ToolInputSchema(
         properties: {
@@ -69,7 +69,7 @@ void registerGestureTools(
     ..registerTool(
       'secondary_tap',
       description:
-          'Simulates a secondary tap (right mouse button click) on an element in the Flutter app. Desktop only — dispatches a mouse pointer with the secondary button pressed, which is what Flutter recognises as onSecondaryTap (e.g. for opening context menus). You can match elements by their key (a ValueKey<String>), by their Semantics identifier, by their text content, by their widget type, or by screen coordinates. Only one matching method should be used. Prefer using the key if available, as it is more reliable. Requires an active connection established via connect.',
+          'Simulates a secondary tap (right mouse button click) on an element in the Flutter app. Desktop only — dispatches a mouse pointer with the secondary button pressed, which is what Flutter recognises as onSecondaryTap (e.g. for opening context menus). You can match elements by their key (a ValueKey<String>), by their Semantics identifier, by their text content, by their widget type, or by screen coordinates. Only one matching method should be used. Prefer using the key if available, as it is more reliable. Requires an active Flutter app connection. Automatic VM service discovery can establish it; use connect only as a fallback.',
       annotations: const ToolAnnotations(title: 'Secondary Tap Element'),
       inputSchema: ToolInputSchema(
         properties: {
@@ -123,7 +123,7 @@ void registerGestureTools(
     ..registerTool(
       'double_tap',
       description:
-          'Simulates a double tap gesture on an element in the Flutter app. This is useful for triggering text selection, zoom, or any widget that responds to double tap. You can match elements by their key, identifier, text, type, or coordinates. An optional delay parameter controls the time between the two taps (default: 100ms). Requires an active connection established via connect.',
+          'Simulates a double tap gesture on an element in the Flutter app. This is useful for triggering text selection, zoom, or any widget that responds to double tap. You can match elements by their key, identifier, text, type, or coordinates. An optional delay parameter controls the time between the two taps (default: 100ms). Requires an active Flutter app connection. Automatic VM service discovery can establish it; use connect only as a fallback.',
       annotations: const ToolAnnotations(title: 'Double Tap Element'),
       inputSchema: ToolInputSchema(
         properties: {
@@ -192,7 +192,7 @@ void registerGestureTools(
     ..registerTool(
       'long_press',
       description:
-          'Simulates a long press gesture on an element in the Flutter app. This is useful for triggering context menus, reorderable lists, or any widget that responds to long press. You can match elements by their key, identifier, text, type, or coordinates. An optional duration parameter controls how long the press is held (default: 600ms). Requires an active connection established via connect.',
+          'Simulates a long press gesture on an element in the Flutter app. This is useful for triggering context menus, reorderable lists, or any widget that responds to long press. You can match elements by their key, identifier, text, type, or coordinates. An optional duration parameter controls how long the press is held (default: 600ms). Requires an active Flutter app connection. Automatic VM service discovery can establish it; use connect only as a fallback.',
       annotations: const ToolAnnotations(title: 'Long Press Element'),
       inputSchema: ToolInputSchema(
         properties: {
@@ -258,7 +258,7 @@ void registerGestureTools(
           '1. Element-based: provide key, identifier, or text to identify the element, plus a direction (left, right, up, down) and optional distance in pixels (default 200). '
           '2. Coordinate-based: provide startX, startY, endX, endY for precise control. '
           'Useful for interacting with PageView, Dismissible, Drawer, Slider, and other swipe-based widgets. '
-          'Requires an active connection established via connect.',
+          'Requires an active Flutter app connection. Automatic VM service discovery can establish it; use connect only as a fallback.',
       annotations: const ToolAnnotations(title: 'Swipe'),
       inputSchema: ToolInputSchema(
         properties: {
@@ -357,7 +357,7 @@ void registerGestureTools(
           'to zoom out (fingers move together). You can target the element by '
           'key, identifier, text, type, or coordinates. Useful for maps, '
           'images, PDFs, and other zoomable content. '
-          'Requires an active connection established via connect.',
+          'Requires an active Flutter app connection. Automatic VM service discovery can establish it; use connect only as a fallback.',
       annotations: const ToolAnnotations(title: 'Pinch Zoom'),
       inputSchema: ToolInputSchema(
         properties: {
@@ -456,7 +456,7 @@ void registerGestureTools(
           'be popped. If the app is on the root route, the system may '
           'minimize or close the app (same as real back button behavior). '
           'Works with Navigator, GoRouter, and other routing solutions. '
-          'Requires an active connection established via connect.',
+          'Requires an active Flutter app connection. Automatic VM service discovery can establish it; use connect only as a fallback.',
       annotations: const ToolAnnotations(title: 'Press Back Button'),
       inputSchema: const ToolInputSchema(properties: {}),
       callback: (args, extra) async {
@@ -482,7 +482,7 @@ void registerGestureTools(
     ..registerTool(
       'scroll_to',
       description:
-          'Scrolls the view until an element matching the given criteria becomes visible. You can match elements by their key (a ValueKey<String>), by their Semantics identifier, or by their visible text content. This is useful when you need to interact with elements that are not currently visible on screen. Requires an active connection established via connect.',
+          'Scrolls the view until an element matching the given criteria becomes visible. You can match elements by their key (a ValueKey<String>), by their Semantics identifier, or by their visible text content. This is useful when you need to interact with elements that are not currently visible on screen. Requires an active Flutter app connection. Automatic VM service discovery can establish it; use connect only as a fallback.',
       annotations: const ToolAnnotations(title: 'Scroll to Element'),
       inputSchema: ToolInputSchema(
         properties: {

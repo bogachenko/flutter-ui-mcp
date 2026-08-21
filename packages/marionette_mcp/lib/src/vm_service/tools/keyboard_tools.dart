@@ -20,7 +20,7 @@ void registerKeyboardTools(
         'app shortcuts via modifiers (for example control+a to select all). '
         'The key is sent to whatever currently has focus, exactly like a real '
         'keyboard, so focus a target first if needed (for example with tap). '
-        'Requires an active connection established via connect.',
+        'Requires an active Flutter app connection. Automatic VM service discovery can establish it; use connect only as a fallback.',
     annotations: const ToolAnnotations(title: 'Press Key'),
     inputSchema: ToolInputSchema(
       properties: {
