@@ -51,9 +51,12 @@ Future<int> runMcpServer({
 
   vmService.registerTools(server);
 
-  StreamSubscription<FileSystemEvent>? vmServiceWatcher;
+  Future<void> Function()? cancelVmServiceWatcher;
   if (vmServiceFile != null) {
-    vmServiceWatcher = await _watchVmServiceFile(vmServiceFile, vmService);
+    cancelVmServiceWatcher = await _watchVmServiceFile(
+      vmServiceFile,
+      vmService,
+    );
   }
 
   try {
@@ -63,11 +66,12 @@ Future<int> runMcpServer({
       return await _runStdioServer(server);
     }
   } finally {
-    await vmServiceWatcher?.cancel();
+    await cancelVmServiceWatcher?.call();
+    await vmService.connector.disconnect();
   }
 }
 
-Future<StreamSubscription<FileSystemEvent>> _watchVmServiceFile(
+Future<Future<void> Function()> _watchVmServiceFile(
   String path,
   VmServiceContext vmService,
 ) async {
@@ -75,46 +79,132 @@ Future<StreamSubscription<FileSystemEvent>> _watchVmServiceFile(
   final file = File(path).absolute;
   final directory = file.parent;
   String? lastConnectedUri;
+  var cancelled = false;
+
+  const maxAttempts = 8;
 
   await directory.create(recursive: true);
 
-  Future<void> connectFromFile() async {
+  Future<String?> readUri() async {
     try {
       if (!await file.exists()) {
-        return;
+        return null;
       }
 
       final uri = (await file.readAsString()).trim();
-      if (uri.isEmpty || uri == lastConnectedUri) {
+      return uri.isEmpty ? null : uri;
+    } catch (err, st) {
+      logger.warning(
+        'Failed to read Flutter VM service URI from ${file.path}',
+        err,
+        st,
+      );
+      return null;
+    }
+  }
+
+  Future<void> connectFromFile() async {
+    if (cancelled) {
+      return;
+    }
+
+    final uri = await readUri();
+    if (cancelled || uri == null || uri == lastConnectedUri) {
+      return;
+    }
+
+    Object? lastError;
+    StackTrace? lastStackTrace;
+
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (cancelled) {
         return;
       }
 
-      logger.info('VM service URI detected in ${file.path}');
-      await vmService.connect(uri);
-      lastConnectedUri = uri;
-      logger.info('Automatically connected to Flutter app');
-    } catch (err, st) {
+      try {
+        if (attempt == 1) {
+          logger.info('VM service URI detected in ${file.path}');
+        } else {
+          logger.info(
+            'Retrying automatic Flutter connection '
+            '($attempt/$maxAttempts)',
+          );
+        }
+
+        await vmService.connect(uri);
+
+        if (cancelled) {
+          return;
+        }
+
+        lastConnectedUri = uri;
+        logger.info('Automatically connected to Flutter app');
+        return;
+      } catch (err, st) {
+        lastError = err;
+        lastStackTrace = st;
+
+        if (attempt == maxAttempts) {
+          break;
+        }
+
+        final delay = Duration(
+          milliseconds: attempt < 4 ? 250 * (1 << (attempt - 1)) : 2000,
+        );
+
+        logger.info(
+          'Flutter isolate is not ready for Marionette yet; '
+          'retrying in ${delay.inMilliseconds} ms',
+        );
+
+        await Future<void>.delayed(delay);
+
+        if (cancelled) {
+          return;
+        }
+
+        final currentUri = await readUri();
+        if (cancelled || currentUri != uri) {
+          return;
+        }
+      }
+    }
+
+    if (!cancelled) {
       logger.warning(
-        'Failed to automatically connect using ${file.path}',
-        err,
-        st,
+        'Failed to automatically connect using ${file.path} '
+        'after $maxAttempts attempts',
+        lastError,
+        lastStackTrace,
       );
     }
   }
 
-  await connectFromFile();
+  Future<void> pending = Future<void>.value();
 
-  Future<void> pending = Future.value();
+  void enqueueConnect() {
+    pending = pending.then((_) => connectFromFile());
+  }
+
   final subscription = directory.watch().listen((event) {
     if (File(event.path).absolute.path != file.path) {
       return;
     }
 
-    pending = pending.then((_) => connectFromFile());
+    enqueueConnect();
   });
 
   logger.info('Watching Flutter VM service file: ${file.path}');
-  return subscription;
+
+  // Subscribe before the initial read so a VM-service file rewrite cannot be
+  // missed between the initial connection attempt and watcher registration.
+  enqueueConnect();
+
+  return () async {
+    cancelled = true;
+    await subscription.cancel();
+    await pending;
+  };
 }
 
 void setupLogging(String logLevelName, String? logFile) {
@@ -241,7 +331,7 @@ Future<int> _runHttpServer(McpServer server, int httpPort) async {
     unawaited(
       exitSignal.wait.then((signal) {
         logger.info('Received ${signal.name}, stopping');
-        unawaited(httpServer.close());
+        unawaited(httpServer.close(force: true));
       }),
     );
 
