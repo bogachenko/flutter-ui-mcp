@@ -194,25 +194,39 @@ final class _WebViewport {
     int windowId,
     String? currentState,
   ) async {
-    final state = currentState ?? 'normal';
-    if (state == 'normal') {
+    if ((currentState ?? 'normal') == 'normal') {
       return;
     }
 
-    Future<void> normalize() async {
-      await cdp.send(
-        'Browser.setWindowBounds',
-        {
-          'windowId': windowId,
-          'bounds': {'windowState': 'normal'},
-        },
+    await cdp.send(
+      'Browser.setWindowBounds',
+      {
+        'windowId': windowId,
+        'bounds': {'windowState': 'normal'},
+      },
+    );
+
+    // Window-state transitions are asynchronous on desktop Chrome. Do not
+    // call Browser.setContentsSize until the window manager has actually
+    // restored the window to its normal state.
+    const attempts = 40;
+    for (var attempt = 0; attempt < attempts; attempt++) {
+      final response = await cdp.send(
+        'Browser.getWindowBounds',
+        {'windowId': windowId},
       );
+      final bounds = response['bounds'];
+
+      if (bounds is Map && bounds['windowState'] == 'normal') {
+        return;
+      }
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
     }
 
-    await normalize();
-    if (state == 'fullscreen') {
-      await normalize();
-    }
+    throw StateError(
+      'Chrome window did not return to normal state before resizing.',
+    );
   }
 
   Future<_Target> _discoverTarget({String? preferredId}) async {
@@ -252,6 +266,7 @@ final class _WebViewport {
 
   List<_ChromeProcess> _flutterChromeProcesses() {
     final processes = <_ChromeProcess>[];
+
     for (final entity in Directory('/proc').listSync(followLinks: false)) {
       if (entity is! Directory ||
           int.tryParse(entity.path.split('/').last) == null) {
@@ -259,49 +274,62 @@ final class _WebViewport {
       }
 
       try {
-        final args = utf8
+        // Chromium may rewrite /proc/<pid>/cmdline into one space-separated
+        // string instead of preserving the original NUL-separated argv.
+        final commandLine = utf8
             .decode(
               File('${entity.path}/cmdline').readAsBytesSync(),
               allowMalformed: true,
             )
-            .split('\u0000')
-            .where((arg) => arg.isNotEmpty)
-            .toList();
+            .replaceAll('\u0000', ' ')
+            .trim();
 
-        String? debugPort;
-        String? userDataDir;
-        for (final arg in args) {
-          if (arg.startsWith('--remote-debugging-port=')) {
-            debugPort = arg;
-          }
-          if (arg.startsWith('--user-data-dir=')) {
-            userDataDir = arg;
-          }
-        }
-        if (debugPort == null ||
-            userDataDir == null ||
-            !userDataDir.contains('flutter_tools_chrome_device.')) {
+        if (commandLine.isEmpty ||
+            RegExp(r'(?:^|\s)--type=').hasMatch(commandLine)) {
+          // Only inspect the top-level browser process, not renderer/gpu/etc.
           continue;
         }
 
-        final port = int.tryParse(debugPort.split('=').last);
+        final debugPortMatch = RegExp(
+          r'(?:^|\s)--remote-debugging-port=(\d+)(?=\s|$)',
+        ).firstMatch(commandLine);
+        final userDataDirMatch = RegExp(
+          r'(?:^|\s)--user-data-dir=([^\s]+)(?=\s|$)',
+        ).firstMatch(commandLine);
+
+        if (debugPortMatch == null || userDataDirMatch == null) {
+          continue;
+        }
+
+        final userDataDir = userDataDirMatch.group(1)!;
+        if (!userDataDir.contains('flutter_tools_chrome_device.')) {
+          continue;
+        }
+
+        final port = int.tryParse(debugPortMatch.group(1)!);
         if (port == null || port <= 0) {
           continue;
         }
 
         Uri? launchUri;
-        for (final arg in args.reversed) {
-          final uri = Uri.tryParse(arg);
-          if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+        for (final match
+            in RegExp(r'https?://[^\s]+').allMatches(commandLine)) {
+          final uri = Uri.tryParse(match.group(0)!);
+          if (uri != null) {
             launchUri = uri;
-            break;
           }
         }
+
+        if (launchUri == null) {
+          continue;
+        }
+
         processes.add((port: port, launchUri: launchUri));
       } on FileSystemException {
         // A process can disappear while /proc is being scanned.
       }
     }
+
     return processes;
   }
 
@@ -310,9 +338,8 @@ final class _WebViewport {
       ..connectionTimeout = const Duration(milliseconds: 500);
     try {
       final version = await _getJson(http, chrome.port, '/json/version');
-      final browserWebSocketUrl = version is Map
-          ? version['webSocketDebuggerUrl'] as String?
-          : null;
+      final browserWebSocketUrl =
+          version is Map ? version['webSocketDebuggerUrl'] as String? : null;
       final browserWebSocketUri = browserWebSocketUrl == null
           ? null
           : Uri.tryParse(browserWebSocketUrl);
