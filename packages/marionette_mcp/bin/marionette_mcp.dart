@@ -26,6 +26,11 @@ ArgParser buildParser() {
     ..addOption(
       'sse-port',
       help: 'Port for SSE server. If not set, uses stdio transport.',
+    )
+    ..addOption(
+      'vmservice-file',
+      help: 'Path to a file containing the Flutter VM service URI. '
+          'The server watches this file and connects automatically.',
     );
 }
 
@@ -57,11 +62,13 @@ Future<int> main(List<String> arguments) async {
     final logFile = results.option('log-file');
     final ssePortStr = results.option('sse-port');
     final ssePort = ssePortStr != null ? int.tryParse(ssePortStr) : null;
+    final vmServiceFile = results.option('vmservice-file');
 
     return await runMcpServer(
       logLevel: logLevel,
       logFile: logFile,
       ssePort: ssePort,
+      vmServiceFile: vmServiceFile,
     );
   } on FormatException catch (e) {
     stderr

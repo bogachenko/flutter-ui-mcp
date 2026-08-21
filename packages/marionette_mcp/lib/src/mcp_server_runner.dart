@@ -29,6 +29,7 @@ Future<int> runMcpServer({
   required String logLevel,
   String? logFile,
   int? ssePort,
+  String? vmServiceFile,
 }) async {
   setupLogging(logLevel, logFile);
 
@@ -50,11 +51,70 @@ Future<int> runMcpServer({
 
   vmService.registerTools(server);
 
-  if (ssePort != null) {
-    return _runSseServer(server, ssePort);
-  } else {
-    return _runStdioServer(server);
+  StreamSubscription<FileSystemEvent>? vmServiceWatcher;
+  if (vmServiceFile != null) {
+    vmServiceWatcher = await _watchVmServiceFile(vmServiceFile, vmService);
   }
+
+  try {
+    if (ssePort != null) {
+      return await _runSseServer(server, ssePort);
+    } else {
+      return await _runStdioServer(server);
+    }
+  } finally {
+    await vmServiceWatcher?.cancel();
+  }
+}
+
+Future<StreamSubscription<FileSystemEvent>> _watchVmServiceFile(
+  String path,
+  VmServiceContext vmService,
+) async {
+  final logger = logging.Logger('VmServiceWatcher');
+  final file = File(path).absolute;
+  final directory = file.parent;
+  String? lastConnectedUri;
+
+  await directory.create(recursive: true);
+
+  Future<void> connectFromFile() async {
+    try {
+      if (!await file.exists()) {
+        return;
+      }
+
+      final uri = (await file.readAsString()).trim();
+      if (uri.isEmpty || uri == lastConnectedUri) {
+        return;
+      }
+
+      logger.info('VM service URI detected in ${file.path}');
+      await vmService.connect(uri);
+      lastConnectedUri = uri;
+      logger.info('Automatically connected to Flutter app');
+    } catch (err, st) {
+      logger.warning(
+        'Failed to automatically connect using ${file.path}',
+        err,
+        st,
+      );
+    }
+  }
+
+  await connectFromFile();
+
+  Future<void> pending = Future.value();
+  final subscription = directory.watch().listen((event) {
+    if (File(event.path).absolute.path != file.path) {
+      return;
+    }
+
+    pending = pending.then((_) => connectFromFile());
+  });
+
+  logger.info('Watching Flutter VM service file: ${file.path}');
+  return subscription;
 }
 
 void setupLogging(String logLevelName, String? logFile) {

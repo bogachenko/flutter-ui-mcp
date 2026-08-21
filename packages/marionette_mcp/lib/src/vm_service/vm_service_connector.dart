@@ -10,7 +10,7 @@ class NotConnectedException implements Exception {
 
   @override
   String toString() =>
-      'Not connected to any app. Use app.connect tool first with the VM service URI.';
+      'Not connected to any Flutter app. Start an app configured for automatic VM service discovery or use the connect tool.';
 }
 
 /// Exception thrown when a VM service extension call fails.

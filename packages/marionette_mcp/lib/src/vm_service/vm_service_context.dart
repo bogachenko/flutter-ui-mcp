@@ -24,6 +24,30 @@ final class VmServiceContext {
   /// disabled tool can be revived in place — see [DynamicExtensionTools].
   late final DynamicExtensionTools _dynamicTools;
 
+  /// Connects to a Flutter app and performs the Marionette compatibility
+  /// handshake.
+  Future<void> connect(String uri) async {
+    _logger.info('Connecting to app at $uri');
+    await connector.connect(uri);
+
+    try {
+      final bindingVersion = await connector.getVersion();
+      if (bindingVersion != v.version) {
+        throw StateError(
+          'Version mismatch: marionette_mcp is ${v.version}, '
+          'but marionette_flutter binding is $bindingVersion. '
+          'Please ensure both packages are the same version.',
+        );
+      }
+
+      await _registerDynamicTools();
+    } catch (err) {
+      _logger.warning('Failed Marionette compatibility handshake', err);
+      await connector.disconnect();
+      rethrow;
+    }
+  }
+
   /// Registers all VM service related tools with the MCP server.
   ///
   /// Connection lifecycle tools (`connect`, `disconnect`) are registered here
@@ -66,45 +90,7 @@ final class VmServiceContext {
           _logger.info('Connecting to app at $uri');
 
           try {
-            await connector.connect(uri);
-
-            // Version compatibility check — unwind the connection on mismatch
-            // so the next call to connect can start fresh.
-            try {
-              final bindingVersion = await connector.getVersion();
-              if (bindingVersion != v.version) {
-                await connector.disconnect();
-                return CallToolResult(
-                  isError: true,
-                  content: [
-                    TextContent(
-                      text: 'Version mismatch: marionette_mcp is ${v.version}, '
-                          'but marionette_flutter binding is $bindingVersion. '
-                          'Please ensure both packages are the same version.',
-                    ),
-                  ],
-                );
-              }
-            } catch (err) {
-              _logger.warning('Failed to check binding version', err);
-              await connector.disconnect();
-              return CallToolResult(
-                isError: true,
-                content: [
-                  TextContent(
-                    text:
-                        'Failed to verify marionette_flutter binding version. '
-                        'Please ensure marionette_flutter is up to date. '
-                        'Error: $err',
-                  ),
-                ],
-              );
-            }
-
-            // Promote each schema-bearing custom extension into a first-class
-            // MCP tool. Failures here are logged but don't fail the connect —
-            // the generic call_custom_extension fallback keeps working.
-            await _registerDynamicTools();
+            await connect(uri);
 
             return CallToolResult(
               content: [
