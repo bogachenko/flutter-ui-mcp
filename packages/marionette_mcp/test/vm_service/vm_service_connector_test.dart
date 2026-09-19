@@ -4,7 +4,6 @@ import 'package:marionette_mcp/src/vm_service/vm_service_connector.dart';
 import 'package:test/test.dart';
 import 'package:vm_service/vm_service.dart';
 
-
 class _FakeVmService extends VmService {
   _FakeVmService({
     required this.hasMarionetteExtension,
@@ -98,10 +97,18 @@ void main() {
         expect(service.serviceStreamListenCount, 1);
         expect(service.disposed, isFalse);
 
+        expect(await connector.getInteractiveElements(), {'ok': true});
+        expect(await connector.tap({'key': 'button'}), {'ok': true});
+        expect(await connector.takeScreenshots(), {'ok': true});
         expect(await connector.getLogs(), {'ok': true});
         expect(
           service.extensionCalls,
-          contains('ext.flutter.marionette.getLogs'),
+          containsAll([
+            'ext.flutter.marionette.interactiveElements',
+            'ext.flutter.marionette.tap',
+            'ext.flutter.marionette.takeScreenshots',
+            'ext.flutter.marionette.getLogs',
+          ]),
         );
 
         await connector.disconnect();
@@ -149,7 +156,34 @@ void main() {
       expect(connector.isConnected, isFalse);
       expect(service.serviceStreamListenCount, 0);
       expect(service.disposed, isTrue);
-      await expectLater(connector.getLogs(), throwsA(isA<NotConnectedException>()));
+      await expectLater(
+        connector.getLogs(),
+        throwsA(isA<NotConnectedException>()),
+      );
+    });
+
+    test('can reconnect after a failed partial connection', () async {
+      final failedService = _FakeVmService(hasMarionetteExtension: false);
+      final connectedService = _FakeVmService(hasMarionetteExtension: true);
+      var connectionCount = 0;
+      final connector = VmServiceConnector(
+        vmServiceConnector: (_) async {
+          connectionCount++;
+          return connectionCount == 1 ? failedService : connectedService;
+        },
+      );
+
+      await expectLater(
+        connector.connect('ws://failed.invalid/ws'),
+        throwsA(isA<Exception>()),
+      );
+      await connector.connect('ws://connected.invalid/ws');
+
+      expect(failedService.disposed, isTrue);
+      expect(connectedService.disposed, isFalse);
+      expect(connector.isConnected, isTrue);
+
+      await connector.disconnect();
     });
 
     test('a repeated connect disposes the previous VM service', () async {
