@@ -1,8 +1,180 @@
+import 'dart:async';
+
 import 'package:marionette_mcp/src/vm_service/vm_service_connector.dart';
 import 'package:test/test.dart';
 import 'package:vm_service/vm_service.dart';
 
+
+class _FakeVmService extends VmService {
+  _FakeVmService({
+    required this.hasMarionetteExtension,
+    this.serviceStreamHangs = false,
+    this.serviceStreamError,
+  }) : super(const Stream<String>.empty(), (_) {});
+
+  final bool hasMarionetteExtension;
+  final bool serviceStreamHangs;
+  final Object? serviceStreamError;
+
+  bool disposed = false;
+  int serviceStreamListenCount = 0;
+  final extensionCalls = <String>[];
+
+  @override
+  Future<VM> getVM() async {
+    return VM(
+      isolates: [
+        IsolateRef(
+          id: 'isolates/1',
+          number: '1',
+          name: 'main',
+          isSystemIsolate: false,
+          isolateGroupId: 'isolateGroups/1',
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<Isolate> getIsolate(String isolateId) async {
+    return Isolate(
+      id: isolateId,
+      number: '1',
+      name: 'main',
+      isSystemIsolate: false,
+      isolateGroupId: 'isolateGroups/1',
+      extensionRPCs: hasMarionetteExtension
+          ? const ['ext.flutter.marionette.getLogs']
+          : const [],
+    );
+  }
+
+  @override
+  Future<Success> streamListen(String streamId) {
+    serviceStreamListenCount++;
+    if (serviceStreamError != null) {
+      return Future<Success>.error(serviceStreamError!);
+    }
+    if (serviceStreamHangs) {
+      return Completer<Success>().future;
+    }
+    return Future.value(Success());
+  }
+
+  @override
+  Future<Response> callServiceExtension(
+    String method, {
+    String? isolateId,
+    Map<String, dynamic>? args,
+  }) async {
+    extensionCalls.add(method);
+    return Response()..json = {'ok': true};
+  }
+
+  @override
+  Future<void> dispose() async {
+    disposed = true;
+  }
+}
+
 void main() {
+  group('VmServiceConnector.connect', () {
+    test(
+      'connects when the Service event stream never completes',
+      () async {
+        final service = _FakeVmService(
+          hasMarionetteExtension: true,
+          serviceStreamHangs: true,
+        );
+        final connector = VmServiceConnector(
+          vmServiceConnector: (_) async => service,
+        );
+
+        await connector
+            .connect('ws://test.invalid/ws')
+            .timeout(const Duration(seconds: 2));
+
+        expect(connector.isConnected, isTrue);
+        expect(service.serviceStreamListenCount, 1);
+        expect(service.disposed, isFalse);
+
+        expect(await connector.getLogs(), {'ok': true});
+        expect(
+          service.extensionCalls,
+          contains('ext.flutter.marionette.getLogs'),
+        );
+
+        await connector.disconnect();
+        expect(service.disposed, isTrue);
+        expect(connector.isConnected, isFalse);
+      },
+    );
+
+    test('Service event stream errors are non-fatal after isolate discovery',
+        () async {
+      final service = _FakeVmService(
+        hasMarionetteExtension: true,
+        serviceStreamError: StateError('Service stream unavailable'),
+      );
+      final connector = VmServiceConnector(
+        vmServiceConnector: (_) async => service,
+      );
+
+      await connector.connect('ws://test.invalid/ws');
+
+      expect(connector.isConnected, isTrue);
+      expect(service.serviceStreamListenCount, 1);
+      expect(service.disposed, isFalse);
+
+      await connector.disconnect();
+    });
+
+    test('isolate discovery failure cleans up connection state', () async {
+      final service = _FakeVmService(hasMarionetteExtension: false);
+      final connector = VmServiceConnector(
+        vmServiceConnector: (_) async => service,
+      );
+
+      await expectLater(
+        connector.connect('ws://test.invalid/ws'),
+        throwsA(
+          isA<Exception>().having(
+            (error) => error.toString(),
+            'message',
+            contains('No isolate found with ext.flutter.marionette.getLogs'),
+          ),
+        ),
+      );
+
+      expect(connector.isConnected, isFalse);
+      expect(service.serviceStreamListenCount, 0);
+      expect(service.disposed, isTrue);
+      await expectLater(connector.getLogs(), throwsA(isA<NotConnectedException>()));
+    });
+
+    test('a repeated connect disposes the previous VM service', () async {
+      final firstService = _FakeVmService(hasMarionetteExtension: true);
+      final secondService = _FakeVmService(hasMarionetteExtension: true);
+      var connectionCount = 0;
+      final connector = VmServiceConnector(
+        vmServiceConnector: (_) async {
+          connectionCount++;
+          return connectionCount == 1 ? firstService : secondService;
+        },
+      );
+
+      await connector.connect('ws://first.invalid/ws');
+      await connector.connect('ws://second.invalid/ws');
+
+      expect(connectionCount, 2);
+      expect(firstService.disposed, isTrue);
+      expect(secondService.disposed, isFalse);
+      expect(connector.isConnected, isTrue);
+
+      await connector.disconnect();
+    });
+  });
+
   group('VmServiceExtensionException.fromRpcError', () {
     test('preserves application-side extension details', () {
       final exception = VmServiceExtensionException.fromRpcError(
