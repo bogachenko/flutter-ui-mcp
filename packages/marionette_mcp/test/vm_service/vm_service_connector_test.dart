@@ -5,12 +5,29 @@ import 'package:test/test.dart';
 import 'package:vm_service/vm_service.dart';
 
 class _FakeVmService extends VmService {
-  _FakeVmService({
-    required this.hasMarionetteExtension,
-    this.serviceStreamHangs = false,
-    this.serviceStreamError,
-  }) : super(const Stream<String>.empty(), (_) {});
+  factory _FakeVmService({
+    required bool hasMarionetteExtension,
+    bool serviceStreamHangs = false,
+    Object? serviceStreamError,
+  }) {
+    final input = StreamController<String>();
+    return _FakeVmService._(
+      input,
+      hasMarionetteExtension: hasMarionetteExtension,
+      serviceStreamHangs: serviceStreamHangs,
+      serviceStreamError: serviceStreamError,
+    );
+  }
 
+  _FakeVmService._(
+    StreamController<String> input, {
+    required this.hasMarionetteExtension,
+    required this.serviceStreamHangs,
+    required this.serviceStreamError,
+  })  : _input = input,
+        super(input.stream, (_) {});
+
+  final StreamController<String> _input;
   final bool hasMarionetteExtension;
   final bool serviceStreamHangs;
   final Object? serviceStreamError;
@@ -72,7 +89,12 @@ class _FakeVmService extends VmService {
 
   @override
   Future<void> dispose() async {
+    if (disposed) {
+      return;
+    }
     disposed = true;
+    await super.dispose();
+    await _input.close();
   }
 }
 
