@@ -85,8 +85,12 @@ String? invalidModifiersError(String? modifiers) {
 /// Manages connection to a Flutter app's VM service and provides
 /// wrapper methods for custom marionette.* extensions.
 class VmServiceConnector {
-  VmServiceConnector() : _logger = logging.Logger('VmServiceConnector');
+  VmServiceConnector({
+    Future<VmService> Function(String uri)? vmServiceConnector,
+  })  : _vmServiceConnector = vmServiceConnector ?? vmServiceConnectUri,
+        _logger = logging.Logger('VmServiceConnector');
 
+  final Future<VmService> Function(String uri) _vmServiceConnector;
   final logging.Logger _logger;
   VmService? _service;
   String? _isolateId;
@@ -102,15 +106,19 @@ class VmServiceConnector {
   ///
   /// Throws an exception if connection fails.
   Future<void> connect(String uri) async {
-    if (isConnected) {
-      _logger.warning('Already connected, disconnecting first');
+    if (_service != null ||
+        _serviceEventSubscription != null ||
+        _isolateId != null ||
+        _registeredServices.isNotEmpty ||
+        _pendingServiceRequests.isNotEmpty) {
+      _logger.warning('Existing VM service state found, disconnecting first');
       await disconnect();
     }
 
     _logger.info('Connecting to VM service at $uri');
 
     try {
-      _service = await vmServiceConnectUri(uri);
+      _service = await _vmServiceConnector(uri);
       _serviceEventSubscription = _service!.onServiceEvent.listen((e) {
         switch (e.kind) {
           case EventKind.kServiceRegistered:
@@ -130,9 +138,29 @@ class VmServiceConnector {
             _logger.info('Service event: $e');
         }
       });
-      await _service!.streamListen(EventStreams.kService);
 
       _isolateId = await _findIsolateWithMarionetteExtensions();
+
+      try {
+        await _service!
+            .streamListen(EventStreams.kService)
+            .timeout(const Duration(seconds: 1));
+      } on TimeoutException catch (err, stackTrace) {
+        _logger.warning(
+          'VM Service Service-event stream is unavailable; '
+          'continuing without service registration discovery',
+          err,
+          stackTrace,
+        );
+      } catch (err, stackTrace) {
+        _logger.warning(
+          'Failed to subscribe to VM Service Service-event stream; '
+          'continuing without service registration discovery',
+          err,
+          stackTrace,
+        );
+      }
+
       _logger.info('Connected to isolate: $_isolateId');
     } catch (err) {
       _logger.severe('Failed to connect to VM service', err);
@@ -143,17 +171,26 @@ class VmServiceConnector {
 
   /// Disconnects from the current VM service.
   Future<void> disconnect() async {
-    if (_service != null) {
-      _logger.info('Disconnecting from VM service');
-      await _serviceEventSubscription?.cancel();
-      _serviceEventSubscription = null;
-      await _service!.dispose();
-      _service = null;
-      _isolateId = null;
-      _registeredServices.clear();
-      _pendingServiceRequests.clear();
-      _logger.fine('Disconnected');
+    final service = _service;
+    final subscription = _serviceEventSubscription;
+
+    _service = null;
+    _serviceEventSubscription = null;
+    _isolateId = null;
+    _registeredServices.clear();
+    _pendingServiceRequests.clear();
+
+    if (service == null && subscription == null) {
+      return;
     }
+
+    _logger.info('Disconnecting from VM service');
+    try {
+      await subscription?.cancel();
+    } finally {
+      await service?.dispose();
+    }
+    _logger.fine('Disconnected');
   }
 
   /// Returns a future that completes with the registered method name for the
