@@ -87,7 +87,7 @@ String? invalidModifiersError(String? modifiers) {
 class VmServiceConnector {
   VmServiceConnector({
     Future<VmService> Function(String uri)? vmServiceConnector,
-  }) : _vmServiceConnector = vmServiceConnector ?? vmServiceConnectUri,
+  })  : _vmServiceConnector = vmServiceConnector ?? vmServiceConnectUri,
         _logger = logging.Logger('VmServiceConnector');
 
   final Future<VmService> Function(String uri) _vmServiceConnector;
